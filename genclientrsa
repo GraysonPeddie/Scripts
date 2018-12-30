@@ -1,0 +1,53 @@
+#!/bin/bash
+[[ $# < 1 || $# > 1 ]] && echo "Specify a client certificate." && exit 2
+   
+CERTFILE=/etc/ssl/your-ca.crt
+PEMFILE=/etc/ssl/your-ca.pem
+   
+ISSUER=$(openssl x509 -in $CERTFILE -text -noout \
+         | grep "Issuer:" | cut -d':' -f2)
+COUNTRY=$(echo $ISSUER | cut -d',' -f1 | awk '{print $3}')
+STATE=$(echo $ISSUER | cut -d',' -f2 | sed -n -e 's/^.*= //p')
+LOCAL=$(echo $ISSUER | cut -d',' -f3 | sed -n -e 's/^.*= //p')
+ONAME=$(echo $ISSUER | cut -d',' -f4 | sed -n -e 's/^.*= //p')
+  
+echo $ISSUER
+  
+ENDDATE=$(date --date="$(openssl x509 -enddate -noout \
+                       -in $CERTFILE | cut -d= -f 2)" +%s)
+NOWDATE=$(date +%s)
+DIFFTOTAL=$(($ENDDATE - $NOWDATE))
+# Note: BASH does not round the decimal to the nearest whole number.
+# For example, if it's 1771 days reported in Zentyal, BASH will output
+# as 1770 days as it truncates the decimal.
+MAXDAYS=$((($DIFFTOTAL / 86400) + 1))
+echo "graysonpeddie-ca certificate will expire in "$MAXDAYS" days."
+echo -e "Please specify a common name: "; read CNAME
+[[ -z "$CNAME" ]] && echo \
+"Client ${1} certificate not generated without a common name. Exiting..." && exit 2
+cat  << EOL > cnf.cnf
+[req] 
+default_bits       = 2048
+encrypt_key        = no
+default_md         = sha256
+distinguished_name = req_distinguished_name
+req_extensions = v3_req
+  
+[ req_distinguished_name ]
+  
+[ v3_req ]
+keyUsage = nonRepudiation, digitalSignature, keyEncipherment
+  
+[dir_sect]
+C=${COUNTRY}
+ST=${STATE}
+L=${LOCAL}
+O=${ONAME}
+CN=${CNAME}
+EOL
+openssl req -nodes -newkey rsa:2048 -keyout $1.key -out $1.csr \
+            -config cnf.cnf -subj "/"
+rm cnf.cnf
+openssl x509 -req -in $1.csr \
+        -CA $CERTFILE -CAkey $PEMFILE \
+        -CAcreateserial -out $1.pem -days $MAXDAYS -sha256
