@@ -1,0 +1,6 @@
+#!/bin/bash
+# If you are using GNOME Shell, assign a keyboard shortcut to enable/disable night light.
+case $(gsettings get org.gnome.settings-daemon.plugins.color night-light-enabled) in
+  (true) gsettings set org.gnome.settings-daemon.plugins.color night-light-enabled false;;
+  (false) gsettings set org.gnome.settings-daemon.plugins.color night-light-enabled true;;
+esac
